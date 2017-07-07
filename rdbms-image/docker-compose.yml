@@ -1,0 +1,88 @@
+version: "3"
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx1024m"
+
+  kafka:
+    image: devicehive/devicehive-kafka
+    ports:
+      - "9092:9092"
+    links:
+      - "zookeeper"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_PORT: 9092
+      DH_ZK_ADDRESS: zookeeper
+      DH_ZK_PORT: 2181
+
+  postgres:
+    image: postgres:9.4
+    ports:
+      - "5432:5432"
+    volumes:
+      - devicehive-db:/var/lib/postgresql/data
+
+  dh_admin:
+    image: devicehive/admin-console:${DH_ADMIN_TAG:-development}
+    ports:
+      - "80:8080"
+    links:
+      - "dh_frontend"
+    environment:
+      DH_HOST: dh_frontend
+      DH_PORT: 8080
+
+  dh_frontend:
+    image: devicehive/devicehive-frontend-rdbms:${DH_TAG:-development}
+    ports:
+      - "8080:8080"
+    links:
+      - "postgres"
+      - "kafka"
+      - "zookeeper"
+    environment:
+      DH_ZK_ADDRESS: zookeeper
+      DH_ZK_PORT: 2181
+      DH_KAFKA_ADDRESS: kafka
+      DH_KAFKA_PORT: 9092
+      DH_POSTGRES_ADDRESS: postgres
+      DH_POSTGRES_PORT: 5432
+      DH_POSTGRES_USERNAME: "postgres"
+      DH_POSTGRES_PASSWORD: "mysecretpassword"
+      DH_POSTGRES_DB: "postgres"
+      JWT_SECRET: ${JWT_SECRET}
+
+  hazelcast:
+    image: devicehive/devicehive-hazelcast:${DH_TAG:-development}
+    ports:
+      - "5701:5701"
+    environment:
+      MAX_HEAP_SIZE: "512m"
+
+  dh_backend:
+    image: devicehive/devicehive-backend-rdbms:${DH_TAG:-development}
+    links:
+      - "hazelcast"
+      - "kafka"
+      - "postgres"
+      - "zookeeper"
+    environment:
+      DH_ZK_ADDRESS: zookeeper
+      DH_ZK_PORT: 2181
+      DH_KAFKA_ADDRESS: kafka
+      DH_KAFKA_PORT: 9092
+      DH_POSTGRES_ADDRESS: postgres
+      DH_POSTGRES_PORT: 5432
+      DH_POSTGRES_USERNAME: "postgres"
+      DH_POSTGRES_PASSWORD: "mysecretpassword"
+      DH_POSTGRES_DB: "postgres"
+      HC_MEMBERS: hazelcast
+      HC_GROUP_NAME: ${HC_GROUP_NAME:-dev}
+      HC_GROUP_PASSWORD: ${HC_GROUP_PASSWORD:-dev-pass}
+
+volumes:
+  devicehive-db:
